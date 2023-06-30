@@ -2,22 +2,34 @@ package main
 
 import (
 	"bytes"
-	"log"
+	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/alecthomas/kingpin/v2"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/promlog"
+	"github.com/prometheus/common/version"
+	"github.com/prometheus/exporter-toolkit/web"
+	webflag "github.com/prometheus/exporter-toolkit/web/kingpinflag"
+)
+
+const (
+	exporter     = "areca_exporter"
+	default_port = 9423
 )
 
 func runArecaCli(cmd string) []byte {
 	out, err := exec.Command("areca.cli64", cmd).Output()
 
 	if err != nil {
-		log.Printf("error: %s", err)
+		level.Error(logger).Log("err", err)
 	}
 
 	return out
@@ -130,6 +142,8 @@ func recordMetrics() {
 }
 
 var (
+	logger = promlog.New(&promlog.Config{})
+
 	arecaSysInfo = promauto.NewGauge(prometheus.GaugeOpts{
 		Name:        "areca_sys_info",
 		Help:        "Constant metric with value 1 labeled with info about Areca controller.",
@@ -138,10 +152,20 @@ var (
 )
 
 func main() {
+	toolkitFlags := webflag.AddFlags(kingpin.CommandLine, ":"+fmt.Sprint(default_port))
+
+	kingpin.Version(version.Print(exporter))
+	kingpin.HelpFlag.Short('h')
+	kingpin.Parse()
+
 	recordMetrics()
 
-	log.Printf("running on port 9101")
+	level.Info(logger).Log("msg", "Starting areca_exporter", "version", version.Info())
 
 	http.Handle("/metrics", promhttp.Handler())
-	log.Fatal(http.ListenAndServe(":9101", nil))
+	srv := &http.Server{}
+	if err := web.ListenAndServe(srv, toolkitFlags, logger); err != nil {
+		level.Error(logger).Log("err", err)
+		os.Exit(1)
+	}
 }
