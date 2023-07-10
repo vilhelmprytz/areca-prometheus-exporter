@@ -161,6 +161,7 @@ func main() {
 	recordMetrics()
 
 	level.Info(logger).Log("msg", "Starting areca_exporter", "version", version.Info())
+	level.Info(logger).Log("msg", "Build context", "build_context", version.BuildContext())
 
 	http.Handle("/metrics", promhttp.Handler())
 	srv := &http.Server{}
