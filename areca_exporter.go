@@ -70,6 +70,25 @@ func getRaidSetInfo() []map[string]string {
 	// create array of raid sets
 	var raidSets []map[string]string
 
+	// recognize first line key names
+	header_line := string(bytes.Split(out, []byte("\n"))[0])
+
+	// split header by space, turn each element into lowercase and put into array
+	var headerKeys []string
+	for _, key := range strings.Split(header_line, " ") {
+		// ignore empthy
+		if len(key) == 0 {
+			continue
+		}
+		key = strings.ToLower(key)
+		// replace invalid label char with valid metric
+		if key == "#" {
+			key = "num"
+		}
+		headerKeys = append(headerKeys, string(key))
+	}
+
+	// then iterate over each rsf line
 	for _, line := range bytes.Split(out, []byte("\n")) {
 		// skip lines we don't care about
 		if len(line) == 0 || !(line[1] >= '0' && line[1] <= '9') {
@@ -87,13 +106,13 @@ func getRaidSetInfo() []map[string]string {
 		// add to hashmap
 		m := make(map[string]string)
 
-		m["id"] = raidSet[0]
-		m["name"] = "Raid Set ## " + raidSet[1]
-		m["disks"] = raidSet[2]
-		m["total_capacity"] = raidSet[3]
-		m["free_capacity"] = raidSet[4]
-		m["disk_channels"] = raidSet[5]
-		m["state"] = raidSet[6]
+		for i, key := range headerKeys {
+			if key == "name" {
+				m[key] = "Raid Set # " + raidSet[i]
+			} else {
+				m[key] = raidSet[i]
+			}
+		}
 
 		raidSets = append(raidSets, m)
 	}
