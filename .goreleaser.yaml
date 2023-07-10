@@ -5,5 +5,12 @@ before:
     # you may remove this if you don't need go generate
     - go generate ./...
 builds:
-  - env:
+  - ldflags:
+      - -s
+      - -X github.com/prometheus/common/version.Version={{ .Version }}
+      - -X github.com/prometheus/common/version.Revision={{ .FullCommit }}
+      - -X github.com/prometheus/common/version.Branch={{ .Branch }}
+      - -X github.com/prometheus/common/version.BuildUser=actions@github
+      - -X github.com/prometheus/common/version.BuildDate={{ .Date }}
+    env:
       - CGO_ENABLED=0

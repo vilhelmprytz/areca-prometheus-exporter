@@ -177,6 +177,8 @@ func main() {
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
 
+	prometheus.Register(version.NewCollector(exporter))
+
 	recordMetrics()
 
 	level.Info(logger).Log("msg", "Starting areca_exporter", "version", version.Info())
