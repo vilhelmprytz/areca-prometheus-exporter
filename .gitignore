@@ -22,3 +22,5 @@ go.work
 
 # ignore areca.cli64
 areca.cli64
+
+dist/
