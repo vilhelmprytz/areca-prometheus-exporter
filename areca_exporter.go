@@ -137,16 +137,15 @@ func getDiskInfo() []map[string]string {
 			continue
 		}
 		key = strings.ToLower(key)
-		// replace invalid label char with valid metric
+
 		if key == "#" {
 			key = "num"
 		}
-		if key == "enc#" {
-			key = "enclousure"
+		// if key contains # but not == #, then strip the hashtag
+		if strings.Contains(key, "#") && key != "#" {
+			key = strings.ReplaceAll(key, "#", "")
 		}
-		if key == "slot#" {
-			key = "slot"
-		}
+
 		headerKeys = append(headerKeys, string(key))
 	}
 
