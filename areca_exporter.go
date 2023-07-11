@@ -124,40 +124,38 @@ func recordMetrics() {
 	arecaSysInfo.Set(1)
 
 	// create all raid set metrics initially
-	metrics := getRaidSetInfo()
 	var raidSetGauges []prometheus.Gauge
 
 	// create new gauge for each raid set
-	for _, m := range metrics {
-		raidSet := promauto.NewGauge(prometheus.GaugeOpts{
-			Name:        "areca_raid_set_state",
-			Help:        "Areca raid set state, 0 for normal, 1 for degraded",
-			ConstLabels: prometheus.Labels(m),
-		})
-		if m["state"] == "Normal" {
-			raidSet.Set(0)
-		} else {
-			raidSet.Set(1)
-		}
-		raidSetGauges = append(raidSetGauges, raidSet)
-	}
-
 	go func() {
 		for {
-			// update raid set metrics
+			// get new raid set metrics
 			metrics := getRaidSetInfo()
 
-			for i, m := range metrics {
+			// delete all metrics in raidSetGauges
+			for _, g := range raidSetGauges {
+				prometheus.Unregister(g)
+			}
+
+			// create them again, since there is no way to update labels for existing metrics
+			for _, m := range metrics {
+				raidSet := promauto.NewGauge(prometheus.GaugeOpts{
+					Name:        "areca_raid_set_state",
+					Help:        "Areca raid set state, 0 for normal, 1 for degraded",
+					ConstLabels: prometheus.Labels(m),
+				})
 				if m["state"] == "Normal" {
-					raidSetGauges[i].Set(0)
+					raidSet.Set(0)
 				} else {
-					raidSetGauges[i].Set(1)
+					raidSet.Set(1)
 				}
+				raidSetGauges = append(raidSetGauges, raidSet)
 			}
 
 			time.Sleep(5 * time.Second)
 		}
 	}()
+
 }
 
 var (
