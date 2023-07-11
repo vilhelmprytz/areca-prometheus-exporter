@@ -120,25 +120,85 @@ func getRaidSetInfo() []map[string]string {
 	return raidSets
 }
 
+func getDiskInfo() []map[string]string {
+	out := runArecaCli("disk info")
+
+	// create array of raid sets
+	var disks []map[string]string
+
+	// recognize first line key names
+	header_line := string(bytes.Split(out, []byte("\n"))[0])
+
+	// split header by space, turn each element into lowercase and put into array
+	var headerKeys []string
+	for _, key := range strings.Split(header_line, " ") {
+		// ignore empthy
+		if len(key) == 0 {
+			continue
+		}
+		key = strings.ToLower(key)
+		// replace invalid label char with valid metric
+		if key == "#" {
+			key = "num"
+		}
+		if key == "enc#" {
+			key = "enclousure"
+		}
+		if key == "slot#" {
+			key = "slot"
+		}
+		headerKeys = append(headerKeys, string(key))
+	}
+
+	// then iterate over each disk line, start from line 2 and end at the third to last
+	for _, line := range bytes.Split(out, []byte("\n"))[2 : len(bytes.Split(out, []byte("\n")))-3] {
+		var disk []string
+		for _, kv := range bytes.Split(line, []byte("  ")) {
+			if len(kv) != 0 {
+				// add to disk, strip all empty spaces
+				disk = append(disk, string(bytes.TrimSpace(kv)))
+			}
+		}
+
+		// add to hashmap
+		m := make(map[string]string)
+
+		for i, key := range headerKeys {
+			m[key] = disk[i]
+		}
+
+		disks = append(disks, m)
+	}
+
+	return disks
+}
+
 func recordMetrics() {
 	arecaSysInfo.Set(1)
 
-	// create all raid set metrics initially
+	// create new gauge for each raid set, and each disk
 	var raidSetGauges []prometheus.Gauge
+	var diskGauges []prometheus.Gauge
 
 	// create new gauge for each raid set
 	go func() {
 		for {
-			// get new raid set metrics
-			metrics := getRaidSetInfo()
+			// get new raid set info
+			rsf_info := getRaidSetInfo()
 
-			// delete all metrics in raidSetGauges
+			// get new disk info
+			disk_info := getDiskInfo()
+
+			// delete all metrics in raidSetGauges and diskGauges
 			for _, g := range raidSetGauges {
 				prometheus.Unregister(g)
 			}
+			for _, g := range diskGauges {
+				prometheus.Unregister(g)
+			}
 
-			// create them again, since there is no way to update labels for existing metrics
-			for _, m := range metrics {
+			// create new gauges for each rsf
+			for _, m := range rsf_info {
 				raidSet := promauto.NewGauge(prometheus.GaugeOpts{
 					Name:        "areca_raid_set_state",
 					Help:        "Areca raid set state, 0 for normal, 1 for degraded",
@@ -150,6 +210,15 @@ func recordMetrics() {
 					raidSet.Set(1)
 				}
 				raidSetGauges = append(raidSetGauges, raidSet)
+			}
+
+			for _, m := range disk_info {
+				disk := promauto.NewGauge(prometheus.GaugeOpts{
+					Name:        "areca_disk_info",
+					Help:        "Constant metric with value 1 labeled with info about all physical disks attached to the Areca controller.",
+					ConstLabels: prometheus.Labels(m),
+				})
+				diskGauges = append(diskGauges, disk)
 			}
 
 			time.Sleep(5 * time.Second)
