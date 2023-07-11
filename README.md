@@ -6,6 +6,7 @@ Prometheus exporter for Areca RAID cards. Exporter depends on Areca CLI being pr
 
 - Provides metrics for the Areca RAID card to be scraped by Prometheus.
 - Supports the following metrics:
+  - `areca_up`: '0' if a scrape of the Areca CLI was successful, '1' otherwise.
   - `areca_sys_info`: Constant metric with a value of 1 labeled with information about the Areca controller.
   - `areca_raid_set_state`: Areca RAID set state, where 0 represents normal and 1 represents degraded.
   - `areca_disk_info`: Constant metric with value 1 labeled with info about all physical disks attached to the Areca controller.

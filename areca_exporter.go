@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -29,7 +30,7 @@ func runArecaCli(cmd string) []byte {
 	out, err := exec.Command("areca.cli64", cmd).Output()
 
 	if err != nil {
-		level.Error(logger).Log("err", err)
+		level.Error(logger).Log("err", err, "msg", out)
 	}
 
 	return out
@@ -37,6 +38,13 @@ func runArecaCli(cmd string) []byte {
 
 func getSysInfo() prometheus.Labels {
 	out := runArecaCli("sys info")
+
+	defer func() {
+		if panicInfo := recover(); panicInfo != nil {
+			level.Error(logger).Log("err", panicInfo, "msg", debug.Stack())
+			arecaDiskInfoUp.Set(1)
+		}
+	}()
 
 	// split by newline, look for ": " and split by that
 	// then trim the space from the key and value
@@ -61,11 +69,20 @@ func getSysInfo() prometheus.Labels {
 		}
 	}
 
+	arecaDiskInfoUp.Set(0)
+
 	return prometheus.Labels(m)
 }
 
 func getRaidSetInfo() []map[string]string {
 	out := runArecaCli("rsf info")
+
+	defer func() {
+		if panicInfo := recover(); panicInfo != nil {
+			level.Error(logger).Log("err", panicInfo, "msg", debug.Stack())
+			arecaRsfInfoUp.Set(1)
+		}
+	}()
 
 	// create array of raid sets
 	var raidSets []map[string]string
@@ -117,11 +134,20 @@ func getRaidSetInfo() []map[string]string {
 		raidSets = append(raidSets, m)
 	}
 
+	arecaRsfInfoUp.Set(0)
+
 	return raidSets
 }
 
 func getDiskInfo() []map[string]string {
 	out := runArecaCli("disk info")
+
+	defer func() {
+		if panicInfo := recover(); panicInfo != nil {
+			level.Error(logger).Log("err", panicInfo, "msg", debug.Stack())
+			arecaDiskInfoUp.Set(1)
+		}
+	}()
 
 	// create array of raid sets
 	var disks []map[string]string
@@ -169,11 +195,15 @@ func getDiskInfo() []map[string]string {
 		disks = append(disks, m)
 	}
 
+	arecaDiskInfoUp.Set(0)
+
 	return disks
 }
 
 func recordMetrics() {
 	arecaSysInfo.Set(1)
+	arecaRsfInfoUp.Set(0)
+	arecaDiskInfoUp.Set(0)
 
 	// create new gauge for each raid set, and each disk
 	var raidSetGauges []prometheus.Gauge
@@ -233,6 +263,27 @@ var (
 		Name:        "areca_sys_info",
 		Help:        "Constant metric with value 1 labeled with info about Areca controller.",
 		ConstLabels: getSysInfo(),
+	})
+	arecaSysInfoUp = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "areca_up",
+		Help: "'0' if a scrape of the Areca CLI was successful, '1' otherwise.",
+		ConstLabels: prometheus.Labels{
+			"collector": "sys_info",
+		},
+	})
+	arecaRsfInfoUp = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "areca_up",
+		Help: "'0' if a scrape of the Areca CLI was successful, '1' otherwise.",
+		ConstLabels: prometheus.Labels{
+			"collector": "rsf_info",
+		},
+	})
+	arecaDiskInfoUp = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "areca_up",
+		Help: "'0' if a scrape of the Areca CLI was successful, '1' otherwise.",
+		ConstLabels: prometheus.Labels{
+			"collector": "disk_info",
+		},
 	})
 )
 
