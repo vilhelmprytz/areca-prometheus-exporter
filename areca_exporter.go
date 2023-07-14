@@ -200,6 +200,20 @@ func getDiskInfo() []map[string]string {
 	return disks
 }
 
+func regRsfMetric(rsf_info map[string]string) prometheus.Gauge {
+	raidSet := promauto.NewGauge(prometheus.GaugeOpts{
+		Name:        "areca_raid_set_state",
+		Help:        "Areca raid set state, 0 for normal, 1 for degraded",
+		ConstLabels: prometheus.Labels(rsf_info),
+	})
+	if rsf_info["state"] == "Normal" {
+		raidSet.Set(0)
+	} else {
+		raidSet.Set(1)
+	}
+	return raidSet
+}
+
 func recordMetrics() {
 	arecaSysInfo.Set(1)
 	arecaRsfInfoUp.Set(0)
@@ -218,27 +232,28 @@ func recordMetrics() {
 			// get new disk info
 			disk_info := getDiskInfo()
 
-			// delete all metrics in raidSetGauges and diskGauges
-			for _, g := range raidSetGauges {
-				prometheus.Unregister(g)
-			}
-			for _, g := range diskGauges {
-				prometheus.Unregister(g)
+			// if same amount of raid sets, then just update the labels if changed
+			if len(raidSetGauges) == len(rsf_info) {
+				for i, g := range raidSetGauges {
+					rsf_desc := prometheus.NewDesc("areca_raid_set_state", "Areca raid set state, 0 for normal, 1 for degraded", nil, prometheus.Labels(rsf_info[i]))
+					if rsf_desc != g.Desc() {
+						prometheus.Unregister(g)
+						raidSetGauges[i] = regRsfMetric(rsf_info[i])
+					}
+				}
+			} else {
+				// unregister all and re-register all
+				for _, g := range raidSetGauges {
+					prometheus.Unregister(g)
+				}
+				raidSetGauges = nil
+				for _, m := range rsf_info {
+					raidSetGauges = append(raidSetGauges, regRsfMetric(m))
+				}
 			}
 
-			// create new gauges for each rsf
-			for _, m := range rsf_info {
-				raidSet := promauto.NewGauge(prometheus.GaugeOpts{
-					Name:        "areca_raid_set_state",
-					Help:        "Areca raid set state, 0 for normal, 1 for degraded",
-					ConstLabels: prometheus.Labels(m),
-				})
-				if m["state"] == "Normal" {
-					raidSet.Set(0)
-				} else {
-					raidSet.Set(1)
-				}
-				raidSetGauges = append(raidSetGauges, raidSet)
+			for _, g := range diskGauges {
+				prometheus.Unregister(g)
 			}
 
 			for _, m := range disk_info {
