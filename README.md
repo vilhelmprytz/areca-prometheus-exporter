@@ -11,6 +11,12 @@ Prometheus exporter for Areca RAID cards. Exporter depends on Areca CLI being pr
   - `areca_raid_set_state`: Areca RAID set state, where 0 represents normal and 1 represents degraded.
   - `areca_disk_info`: Constant metric with value 1 labeled with info about all physical disks attached to the Areca controller.
 
+## Config options
+
+| Option               | Description                 | Default |
+| -------------------- | --------------------------- | ------- |
+| `--collect-interval` | How often to poll Areca CLI | `5s`    |
+
 ## Prerequisites
 
 Before using the Areca Prometheus Exporter, ensure you have the following prerequisites installed:

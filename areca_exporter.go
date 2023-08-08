@@ -265,14 +265,15 @@ func recordMetrics() {
 				diskGauges = append(diskGauges, disk)
 			}
 
-			time.Sleep(5 * time.Second)
+			time.Sleep(*collectInterval)
 		}
 	}()
 
 }
 
 var (
-	logger = promlog.New(&promlog.Config{})
+	logger          = promlog.New(&promlog.Config{})
+	collectInterval = kingpin.Flag("collect-interval", "How often to poll Areca CLI").Default("5s").Duration()
 
 	arecaSysInfo = promauto.NewGauge(prometheus.GaugeOpts{
 		Name:        "areca_sys_info",
