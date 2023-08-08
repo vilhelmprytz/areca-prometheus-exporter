@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -26,23 +27,34 @@ const (
 	default_port = 9423
 )
 
-func runArecaCli(cmd string) []byte {
-	out, err := exec.Command("areca.cli64", cmd).Output()
+func runArecaCli(cmd string) ([]byte, error) {
+	ctx := context.Background()
+
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(context.Background(), time.Duration(60)*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "areca.cli64", cmd).Output()
 
 	if err != nil {
 		level.Error(logger).Log("err", err, "msg", out)
 	}
 
-	return out
+	return out, err
 }
 
 func getSysInfo() prometheus.Labels {
-	out := runArecaCli("sys info")
+	out, cmd_err := runArecaCli("sys info")
+
+	if cmd_err != nil {
+		arecaSysInfoUp.Set(1)
+		return nil
+	}
 
 	defer func() {
 		if panicInfo := recover(); panicInfo != nil {
 			level.Error(logger).Log("err", panicInfo, "msg", debug.Stack())
-			arecaDiskInfoUp.Set(1)
+			arecaSysInfoUp.Set(1)
 		}
 	}()
 
@@ -75,7 +87,12 @@ func getSysInfo() prometheus.Labels {
 }
 
 func getRaidSetInfo() []map[string]string {
-	out := runArecaCli("rsf info")
+	out, cmd_err := runArecaCli("rsf info")
+
+	if cmd_err != nil {
+		arecaRsfInfoUp.Set(1)
+		return nil
+	}
 
 	defer func() {
 		if panicInfo := recover(); panicInfo != nil {
@@ -140,7 +157,12 @@ func getRaidSetInfo() []map[string]string {
 }
 
 func getDiskInfo() []map[string]string {
-	out := runArecaCli("disk info")
+	out, cmd_err := runArecaCli("disk info")
+
+	if cmd_err != nil {
+		arecaDiskInfoUp.Set(1)
+		return nil
+	}
 
 	defer func() {
 		if panicInfo := recover(); panicInfo != nil {
