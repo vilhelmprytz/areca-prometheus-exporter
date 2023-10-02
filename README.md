@@ -16,13 +16,13 @@ Prometheus exporter for Areca RAID cards. Exporter depends on Areca CLI being pr
 | Option               | Description                 | Default       |
 | -------------------- | --------------------------- | ------------- |
 | `--collect-interval` | How often to poll Areca CLI | `5s`          |
-| `--cli-path`         | Path to Areca CLI           | `areca.cli64` |
+| `--cli-path`         | Path to Areca CLI binary    | `areca.cli64` |
 
 ## Prerequisites
 
 Before using the Areca Prometheus Exporter, ensure you have the following prerequisites installed:
 
-- `Areca cli64` in `cli-path`
+- Areca CLI binary in `$PATH` (`areca.cli64`) or at the path specified by option `cli-path`
 
 ## Contributors ✨
 
