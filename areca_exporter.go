@@ -34,7 +34,7 @@ func runArecaCli(cmd string) ([]byte, error) {
 	ctx, cancel = context.WithTimeout(context.Background(), time.Duration(60)*time.Second)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, "areca.cli64", cmd).Output()
+	out, err := exec.CommandContext(ctx, *cliPath, cmd).Output()
 
 	if err != nil {
 		level.Error(logger).Log("err", err, "msg", out)
@@ -296,6 +296,7 @@ func recordMetrics() {
 var (
 	logger          = promlog.New(&promlog.Config{})
 	collectInterval = kingpin.Flag("collect-interval", "How often to poll Areca CLI").Default("5s").Duration()
+	cliPath         = kingpin.Flag("cli-path", "Path to the Areca CLI binary").Default("areca.cli64").String()
 
 	arecaSysInfo = promauto.NewGauge(prometheus.GaugeOpts{
 		Name:        "areca_sys_info",
