@@ -44,6 +44,9 @@ func runArecaCli(cmd string) ([]byte, error) {
 }
 
 func getSysInfo() prometheus.Labels {
+	// parse arguments early because getSysInfo might not be called before the first parsing of cli arguments
+	kingpin.Parse()
+
 	out, cmd_err := runArecaCli("sys info")
 
 	if cmd_err != nil {
