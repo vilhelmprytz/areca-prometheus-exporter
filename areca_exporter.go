@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -170,7 +171,7 @@ func getDiskInfo() []map[string]string {
 		}
 	}()
 
-	// create array of raid sets
+	// create array of disks
 	var disks []map[string]string
 
 	// recognize first line key names
@@ -221,6 +222,78 @@ func getDiskInfo() []map[string]string {
 	return disks
 }
 
+func getDetailedDiskInfo(disk map[string]string) map[string]string {
+	if disk["modelname"] == "N.A." {
+		return nil
+	}
+
+	// get detailed disk info
+	out, cmd_err := runArecaCli(fmt.Sprintf("disk info drv=%s", disk["num"]))
+
+	if cmd_err != nil {
+		return nil
+	}
+
+	defer func() {
+		if panicInfo := recover(); panicInfo != nil {
+			level.Error(logger).Log("err", panicInfo, "msg", debug.Stack())
+			arecaDiskInfoUp.Set(1)
+		}
+	}()
+
+	m := make(map[string]string)
+	m["num"] = disk["num"]
+
+	// Split output into keys (column 1) and values (column 2)
+	for _, line := range bytes.Split(out, []byte("\n"))[2 : len(bytes.Split(out, []byte("\n")))-3] {
+		kv := bytes.Split(line, []byte(":"))
+		key := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(string(bytes.TrimSpace(kv[0])), " ", "_"), ".", ""))
+		value := string(bytes.TrimSpace(kv[1]))
+		m[key] = value
+	}
+
+	return m
+}
+
+func getMediaErrors(detailedDisk map[string]string) (map[string]string, float64) {
+	labels := make(map[string]string)
+	value, err := strconv.ParseFloat(detailedDisk["media_error_count"], 64)
+	if err != nil {
+		return nil, 0
+	}
+
+	for k, v := range detailedDisk {
+		for _, d := range diskLabels {
+			if k == d {
+				labels[k] = v
+			}
+		}
+	}
+
+	return labels, value
+}
+
+func getDiskState(detailedDisk map[string]string) (map[string]string, float64) {
+	labels := make(map[string]string)
+	var value float64
+
+	if strings.ToUpper(detailedDisk["device_state"]) == "NORMAL" {
+		value = 0
+	} else {
+		value = 1
+	}
+
+	for k, v := range detailedDisk {
+		for _, d := range diskLabels {
+			if k == d {
+				labels[k] = v
+			}
+		}
+	}
+
+	return labels, value
+}
+
 func regRsfMetric(rsf_info map[string]string) prometheus.Gauge {
 	raidSet := promauto.NewGauge(prometheus.GaugeOpts{
 		Name:        "areca_raid_set_state",
@@ -250,6 +323,8 @@ func recordMetrics() {
 	// create new gauge for each raid set, and each disk
 	var raidSetGauges []prometheus.Gauge
 	var diskGauges []prometheus.Gauge
+	var mediaErrorGauges []prometheus.Gauge
+	var diskStateGauges []prometheus.Gauge
 
 	// create new gauge for each raid set
 	go func() {
@@ -284,13 +359,45 @@ func recordMetrics() {
 				prometheus.Unregister(g)
 			}
 
+			for _, e := range mediaErrorGauges {
+				prometheus.Unregister(e)
+			}
+
+			for _, s := range diskStateGauges {
+				prometheus.Unregister(s)
+			}
+
 			for _, m := range disk_info {
 				disk := promauto.NewGauge(prometheus.GaugeOpts{
 					Name:        "areca_disk_info",
 					Help:        "Constant metric with value 1 labeled with info about all physical disks attached to the Areca controller.",
 					ConstLabels: prometheus.Labels(m),
 				})
+				disk.Set(1)
 				diskGauges = append(diskGauges, disk)
+
+				// get media errors and state per disk and create metrics
+				if detailed_disk_info := getDetailedDiskInfo(m); detailed_disk_info != nil {
+					mediaErrorLabels, mediaErrorValue := getMediaErrors(detailed_disk_info)
+
+					mediaErrorGauge := promauto.NewGauge(prometheus.GaugeOpts{
+						Name:        "areca_disk_media_errors",
+						Help:        "Areca controller disk metric for media errors",
+						ConstLabels: prometheus.Labels(mediaErrorLabels),
+					})
+					mediaErrorGauge.Set(mediaErrorValue)
+					mediaErrorGauges = append(mediaErrorGauges, mediaErrorGauge)
+
+					diskStateLabels, diskStateValue := getDiskState(detailed_disk_info)
+
+					diskStateGauge := promauto.NewGauge(prometheus.GaugeOpts{
+						Name:        "areca_disk_state",
+						Help:        "Areca controller metric for disk state, 0 for normal, 1 for error",
+						ConstLabels: prometheus.Labels(diskStateLabels),
+					})
+					diskStateGauge.Set(diskStateValue)
+					diskStateGauges = append(diskStateGauges, diskStateGauge)
+				}
 			}
 
 			time.Sleep(*collectInterval)
@@ -325,6 +432,16 @@ var (
 			"collector": "disk_info",
 		},
 	})
+	diskLabels = []string{
+		"device_location",
+		"device_type",
+		"disk_capacity",
+		"firmware_rev",
+		"model_name",
+		"num",
+		"security_capability",
+		"serial_number",
+	}
 )
 
 func main() {
@@ -342,6 +459,16 @@ func main() {
 	level.Info(logger).Log("msg", "Build context", "build_context", version.BuildContext())
 
 	http.Handle("/metrics", promhttp.Handler())
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html>
+            <head><title>Areca Exporter</title></head>
+            <body>
+            <h1>Areca Exporter</h1>
+            <p><a href="/metrics">Metrics</a></p>
+            </body>
+            </html>`))
+	})
+
 	srv := &http.Server{}
 	if err := web.ListenAndServe(srv, toolkitFlags, logger); err != nil {
 		level.Error(logger).Log("err", err)
