@@ -43,9 +43,6 @@ func runArecaCli(cmd string) ([]byte, error) {
 }
 
 func getSysInfo() prometheus.Labels {
-	// parse arguments early because getSysInfo might not be called before the first parsing of cli arguments
-	kingpin.Parse()
-
 	out, cmd_err := runArecaCli("sys info")
 
 	if cmd_err != nil {
@@ -239,6 +236,13 @@ func regRsfMetric(rsf_info map[string]string) prometheus.Gauge {
 }
 
 func recordMetrics() {
+	// record sys info initially
+	var arecaSysInfo = promauto.NewGauge(prometheus.GaugeOpts{
+		Name:        "areca_sys_info",
+		Help:        "Constant metric with value 1 labeled with info about Areca controller.",
+		ConstLabels: getSysInfo(),
+	})
+
 	arecaSysInfo.Set(1)
 	arecaRsfInfoUp.Set(0)
 	arecaDiskInfoUp.Set(0)
@@ -300,11 +304,6 @@ var (
 	collectInterval = kingpin.Flag("collect-interval", "How often to poll Areca CLI").Default("5s").Duration()
 	cliPath         = kingpin.Flag("cli-path", "Path to the Areca CLI binary").Default("areca.cli64").String()
 
-	arecaSysInfo = promauto.NewGauge(prometheus.GaugeOpts{
-		Name:        "areca_sys_info",
-		Help:        "Constant metric with value 1 labeled with info about Areca controller.",
-		ConstLabels: getSysInfo(),
-	})
 	arecaSysInfoUp = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "areca_up",
 		Help: "'0' if a scrape of the Areca CLI was successful, '1' otherwise.",
