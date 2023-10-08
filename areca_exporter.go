@@ -28,9 +28,8 @@ const (
 )
 
 func runArecaCli(cmd string) ([]byte, error) {
-	ctx := context.Background()
-
 	var cancel context.CancelFunc
+	var ctx context.Context
 	ctx, cancel = context.WithTimeout(context.Background(), time.Duration(60)*time.Second)
 	defer cancel()
 
