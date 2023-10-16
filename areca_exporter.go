@@ -380,13 +380,16 @@ func recordMetrics() {
 				if detailed_disk_info := getDetailedDiskInfo(m); detailed_disk_info != nil {
 					mediaErrorLabels, mediaErrorValue := getMediaErrors(detailed_disk_info)
 
-					mediaErrorGauge := promauto.NewGauge(prometheus.GaugeOpts{
-						Name:        "areca_disk_media_errors",
-						Help:        "Areca controller disk metric for media errors",
-						ConstLabels: prometheus.Labels(mediaErrorLabels),
-					})
-					mediaErrorGauge.Set(mediaErrorValue)
-					mediaErrorGauges = append(mediaErrorGauges, mediaErrorGauge)
+					// ignore disks with no media error value, i.e. on very old Areca controllers
+					if mediaErrorLabels != nil {
+						mediaErrorGauge := promauto.NewGauge(prometheus.GaugeOpts{
+							Name:        "areca_disk_media_errors",
+							Help:        "Areca controller disk metric for media errors",
+							ConstLabels: prometheus.Labels(mediaErrorLabels),
+						})
+						mediaErrorGauge.Set(mediaErrorValue)
+						mediaErrorGauges = append(mediaErrorGauges, mediaErrorGauge)
+					}
 
 					diskStateLabels, diskStateValue := getDiskState(detailed_disk_info)
 
