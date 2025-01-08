@@ -30,13 +30,24 @@ const (
 	default_port = 9423
 )
 
-func runArecaCli(cmd string) ([]byte, error) {
+type controller struct {
+	index                                           int
+	arecaSysInfoUp, arecaRsfInfoUp, arecaDiskInfoUp prometheus.Gauge
+}
+
+func (ctrl controller) newLabels() map[string]string {
+	return map[string]string{
+		"controller_index": strconv.Itoa(ctrl.index),
+	}
+}
+
+func (ctrl controller) runArecaCli(cmd string) ([]byte, error) {
 	var cancel context.CancelFunc
 	var ctx context.Context
 	ctx, cancel = context.WithTimeout(context.Background(), time.Duration(60)*time.Second)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, *cliPath, cmd).Output()
+	out, err := exec.CommandContext(ctx, *cliPath, fmt.Sprintf("curctrl=%d", ctrl.index), cmd).Output()
 
 	if err != nil {
 		level.Error(logger).Log("err", err, "msg", out)
@@ -45,25 +56,25 @@ func runArecaCli(cmd string) ([]byte, error) {
 	return out, err
 }
 
-func getSysInfo() prometheus.Labels {
-	out, cmd_err := runArecaCli("sys info")
+func (ctrl controller) getSysInfo() prometheus.Labels {
+	out, cmd_err := ctrl.runArecaCli("sys info")
 
 	if cmd_err != nil {
-		arecaSysInfoUp.Set(1)
+		ctrl.arecaSysInfoUp.Set(1)
 		return nil
 	}
 
 	defer func() {
 		if panicInfo := recover(); panicInfo != nil {
 			level.Error(logger).Log("err", panicInfo, "msg", debug.Stack())
-			arecaSysInfoUp.Set(1)
+			ctrl.arecaSysInfoUp.Set(1)
 		}
 	}()
 
 	// split by newline, look for ": " and split by that
 	// then trim the space from the key and value
 	// then add to map
-	m := make(map[string]string)
+	m := ctrl.newLabels()
 	for _, line := range bytes.Split(out, []byte("\n")) {
 		if bytes.Contains(line, []byte(": ")) {
 			kv := bytes.Split(line, []byte(": "))
@@ -83,23 +94,23 @@ func getSysInfo() prometheus.Labels {
 		}
 	}
 
-	arecaDiskInfoUp.Set(0)
+	ctrl.arecaDiskInfoUp.Set(0)
 
 	return prometheus.Labels(m)
 }
 
-func getRaidSetInfo() []map[string]string {
-	out, cmd_err := runArecaCli("rsf info")
+func (ctrl controller) getRaidSetInfo() []map[string]string {
+	out, cmd_err := ctrl.runArecaCli("rsf info")
 
 	if cmd_err != nil {
-		arecaRsfInfoUp.Set(1)
+		ctrl.arecaRsfInfoUp.Set(1)
 		return nil
 	}
 
 	defer func() {
 		if panicInfo := recover(); panicInfo != nil {
 			level.Error(logger).Log("err", panicInfo, "msg", debug.Stack())
-			arecaRsfInfoUp.Set(1)
+			ctrl.arecaRsfInfoUp.Set(1)
 		}
 	}()
 
@@ -140,7 +151,7 @@ func getRaidSetInfo() []map[string]string {
 		}
 
 		// add to hashmap
-		m := make(map[string]string)
+		m := ctrl.newLabels()
 
 		for i, key := range headerKeys {
 			if key == "name" {
@@ -153,23 +164,23 @@ func getRaidSetInfo() []map[string]string {
 		raidSets = append(raidSets, m)
 	}
 
-	arecaRsfInfoUp.Set(0)
+	ctrl.arecaRsfInfoUp.Set(0)
 
 	return raidSets
 }
 
-func getDiskInfo() []map[string]string {
-	out, cmd_err := runArecaCli("disk info")
+func (ctrl controller) getDiskInfo() []map[string]string {
+	out, cmd_err := ctrl.runArecaCli("disk info")
 
 	if cmd_err != nil {
-		arecaDiskInfoUp.Set(1)
+		ctrl.arecaDiskInfoUp.Set(1)
 		return nil
 	}
 
 	defer func() {
 		if panicInfo := recover(); panicInfo != nil {
 			level.Error(logger).Log("err", panicInfo, "msg", debug.Stack())
-			arecaDiskInfoUp.Set(1)
+			ctrl.arecaDiskInfoUp.Set(1)
 		}
 	}()
 
@@ -210,7 +221,7 @@ func getDiskInfo() []map[string]string {
 		}
 
 		// add to hashmap
-		m := make(map[string]string)
+		m := ctrl.newLabels()
 
 		for i, key := range headerKeys {
 			m[key] = disk[i]
@@ -219,18 +230,18 @@ func getDiskInfo() []map[string]string {
 		disks = append(disks, m)
 	}
 
-	arecaDiskInfoUp.Set(0)
+	ctrl.arecaDiskInfoUp.Set(0)
 
 	return disks
 }
 
-func getDetailedDiskInfo(disk map[string]string) map[string]string {
+func (ctrl controller) getDetailedDiskInfo(disk map[string]string) map[string]string {
 	if disk["modelname"] == "N.A." {
 		return nil
 	}
 
 	// get detailed disk info
-	out, cmd_err := runArecaCli(fmt.Sprintf("disk info drv=%s", disk["num"]))
+	out, cmd_err := ctrl.runArecaCli(fmt.Sprintf("disk info drv=%s", disk["num"]))
 
 	if cmd_err != nil {
 		return nil
@@ -239,11 +250,11 @@ func getDetailedDiskInfo(disk map[string]string) map[string]string {
 	defer func() {
 		if panicInfo := recover(); panicInfo != nil {
 			level.Error(logger).Log("err", panicInfo, "msg", debug.Stack())
-			arecaDiskInfoUp.Set(1)
+			ctrl.arecaDiskInfoUp.Set(1)
 		}
 	}()
 
-	m := make(map[string]string)
+	m := ctrl.newLabels()
 	m["num"] = disk["num"]
 
 	// Split output into keys (column 1) and values (column 2)
@@ -310,17 +321,18 @@ func regRsfMetric(rsf_info map[string]string) prometheus.Gauge {
 	return raidSet
 }
 
-func recordMetrics() {
+func (ctrl controller) recordMetrics() {
 	// record sys info initially
-	var arecaSysInfo = promauto.NewGauge(prometheus.GaugeOpts{
-		Name:        "areca_sys_info",
-		Help:        "Constant metric with value 1 labeled with info about Areca controller.",
-		ConstLabels: getSysInfo(),
-	})
+	if labels := ctrl.getSysInfo(); labels != nil {
+		promauto.NewGauge(prometheus.GaugeOpts{
+			Name:        "areca_sys_info",
+			Help:        "Constant metric with value 1 labeled with info about Areca controller.",
+			ConstLabels: labels,
+		}).Set(1)
+	}
 
-	arecaSysInfo.Set(1)
-	arecaRsfInfoUp.Set(0)
-	arecaDiskInfoUp.Set(0)
+	ctrl.arecaRsfInfoUp.Set(0)
+	ctrl.arecaDiskInfoUp.Set(0)
 
 	// create new gauge for each raid set, and each disk
 	var raidSetGauges []prometheus.Gauge
@@ -332,10 +344,10 @@ func recordMetrics() {
 	go func() {
 		for {
 			// get new raid set info
-			rsf_info := getRaidSetInfo()
+			rsf_info := ctrl.getRaidSetInfo()
 
 			// get new disk info
-			disk_info := getDiskInfo()
+			disk_info := ctrl.getDiskInfo()
 
 			// if same amount of raid sets, then just update the labels if changed
 			if len(raidSetGauges) == len(rsf_info) {
@@ -379,7 +391,7 @@ func recordMetrics() {
 				diskGauges = append(diskGauges, disk)
 
 				// get media errors and state per disk and create metrics
-				if detailed_disk_info := getDetailedDiskInfo(m); detailed_disk_info != nil {
+				if detailed_disk_info := ctrl.getDetailedDiskInfo(m); detailed_disk_info != nil {
 					mediaErrorLabels, mediaErrorValue := getMediaErrors(detailed_disk_info)
 
 					// ignore disks with no media error value, i.e. on very old Areca controllers
@@ -404,7 +416,6 @@ func recordMetrics() {
 					diskStateGauges = append(diskStateGauges, diskStateGauge)
 				}
 			}
-
 			time.Sleep(*collectInterval)
 		}
 	}()
@@ -413,31 +424,12 @@ func recordMetrics() {
 
 var (
 	logger          = promlog.New(&promlog.Config{})
-	collectInterval = kingpin.Flag("collect-interval", "How often to poll Areca CLI").Default("5s").Duration()
+	collectInterval = kingpin.Flag("collect-interval", "How often to poll each controller").Default("5s").Duration()
 	cliPath         = kingpin.Flag("cli-path", "Path to the Areca CLI binary").Default("areca.cli64").String()
+	controllers     = kingpin.Flag("controllers", "How many controllers to scrape").Default("1").Int()
 
-	arecaSysInfoUp = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "areca_up",
-		Help: "'0' if a scrape of the Areca CLI was successful, '1' otherwise.",
-		ConstLabels: prometheus.Labels{
-			"collector": "sys_info",
-		},
-	})
-	arecaRsfInfoUp = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "areca_up",
-		Help: "'0' if a scrape of the Areca CLI was successful, '1' otherwise.",
-		ConstLabels: prometheus.Labels{
-			"collector": "rsf_info",
-		},
-	})
-	arecaDiskInfoUp = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "areca_up",
-		Help: "'0' if a scrape of the Areca CLI was successful, '1' otherwise.",
-		ConstLabels: prometheus.Labels{
-			"collector": "disk_info",
-		},
-	})
 	diskLabels = []string{
+		"controller_index",
 		"device_location",
 		"device_type",
 		"disk_capacity",
@@ -460,7 +452,35 @@ func main() {
 		log.Fatalf("could not register version collector: %v", err)
 	}
 
-	recordMetrics()
+	for i := 1; i <= *controllers; i++ {
+		controller{
+			index: i,
+			arecaSysInfoUp: promauto.NewGauge(prometheus.GaugeOpts{
+				Name: "areca_up",
+				Help: "'0' if a scrape of the Areca CLI was successful, '1' otherwise.",
+				ConstLabels: prometheus.Labels{
+					"collector":        "sys_info",
+					"controller_index": strconv.Itoa(i),
+				},
+			}),
+			arecaRsfInfoUp: promauto.NewGauge(prometheus.GaugeOpts{
+				Name: "areca_up",
+				Help: "'0' if a scrape of the Areca CLI was successful, '1' otherwise.",
+				ConstLabels: prometheus.Labels{
+					"collector":        "rsf_info",
+					"controller_index": strconv.Itoa(i),
+				},
+			}),
+			arecaDiskInfoUp: promauto.NewGauge(prometheus.GaugeOpts{
+				Name: "areca_up",
+				Help: "'0' if a scrape of the Areca CLI was successful, '1' otherwise.",
+				ConstLabels: prometheus.Labels{
+					"collector":        "disk_info",
+					"controller_index": strconv.Itoa(i),
+				},
+			}),
+		}.recordMetrics()
+	}
 
 	level.Info(logger).Log("msg", "Starting areca_exporter", "version", version.Info())
 	level.Info(logger).Log("msg", "Build context", "build_context", version.BuildContext())
