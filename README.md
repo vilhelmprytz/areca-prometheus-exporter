@@ -12,6 +12,7 @@ Prometheus exporter for Areca RAID cards. Exporter depends on Areca CLI being pr
   - `areca_disk_info`: Constant metric with value 1 labeled with info about all physical disks attached to Areca controllers.
   - `areca_disk_state`: Areca controller metric for disk state, 0 for normal, 1 for error
   - `areca_disk_media_errors`: Metric for media errors of all physical disks attached to Areca controllers.
+- Supports systems with multiple controllers.
 
 ## Config options
 
