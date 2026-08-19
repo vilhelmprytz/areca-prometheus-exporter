@@ -28,7 +28,7 @@ Before using the Areca Prometheus Exporter, ensure you have the following prereq
 
 ## Contributors ✨
 
-Copyright (C) 2024, Vilhelm Prytz, <vilhelm@prytznet.se>
+Copyright (C) 2026, Vilhelm Prytz, <vilhelm@prytznet.se>
 
 Licensed under the [MIT license](LICENSE).
 
