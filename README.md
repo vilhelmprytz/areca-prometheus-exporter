@@ -4,21 +4,23 @@ Prometheus exporter for Areca RAID cards. Exporter depends on Areca CLI being pr
 
 ## Features
 
-- Provides metrics for the Areca RAID card to be scraped by Prometheus.
+- Provides metrics for the Areca RAID cards to be scraped by Prometheus.
 - Supports the following metrics:
   - `areca_up`: '0' if a scrape of the Areca CLI was successful, '1' otherwise.
-  - `areca_sys_info`: Constant metric with a value of 1 labeled with information about the Areca controller.
+  - `areca_sys_info`: Constant metric with a value of 1 labeled with information about Areca controllers.
   - `areca_raid_set_state`: Areca RAID set state, where 0 represents normal and 1 represents degraded.
-  - `areca_disk_info`: Constant metric with value 1 labeled with info about all physical disks attached to the Areca controller.
+  - `areca_disk_info`: Constant metric with value 1 labeled with info about all physical disks attached to Areca controllers.
   - `areca_disk_state`: Areca controller metric for disk state, 0 for normal, 1 for error
-  - `areca_disk_media_errors`: Metric for media errors of all physical disks attached to the Areca controller.
+  - `areca_disk_media_errors`: Metric for media errors of all physical disks attached to Areca controllers.
+- Supports systems with multiple controllers.
 
 ## Config options
 
-| Option               | Description                 | Default       |
-| -------------------- | --------------------------- | ------------- |
-| `--collect-interval` | How often to poll Areca CLI | `5s`          |
-| `--cli-path`         | Path to Areca CLI binary    | `areca.cli64` |
+| Option               | Description                       | Default       |
+| -------------------- | --------------------------------- | ------------- |
+| `--collect-interval` | How often to poll each controller | `5s`          |
+| `--cli-path`         | Path to Areca CLI binary          | `areca.cli64` |
+| `--controllers`      | How many controllers to scrape    | `1`           |
 
 ## Prerequisites
 
