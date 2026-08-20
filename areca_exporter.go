@@ -93,7 +93,7 @@ func (ctrl controller) getSysInfo() prometheus.Labels {
 		}
 	}
 
-	ctrl.arecaDiskInfoUp.Set(0)
+	ctrl.arecaSysInfoUp.Set(0)
 
 	return prometheus.Labels(m)
 }
