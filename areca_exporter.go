@@ -14,12 +14,11 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	versionCollector "github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/common/promlog"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/exporter-toolkit/web"
 	webflag "github.com/prometheus/exporter-toolkit/web/kingpinflag"
@@ -50,7 +49,7 @@ func (ctrl controller) runArecaCli(cmd string) ([]byte, error) {
 	out, err := exec.CommandContext(ctx, *cliPath, fmt.Sprintf("curctrl=%d", ctrl.index), cmd).Output()
 
 	if err != nil {
-		level.Error(logger).Log("err", err, "msg", out)
+		logger.Error("areca cli failed", "err", err, "out", string(out))
 	}
 
 	return out, err
@@ -66,7 +65,7 @@ func (ctrl controller) getSysInfo() prometheus.Labels {
 
 	defer func() {
 		if panicInfo := recover(); panicInfo != nil {
-			level.Error(logger).Log("err", panicInfo, "msg", debug.Stack())
+			logger.Error("panic recovered", "err", panicInfo, "stack", string(debug.Stack()))
 			ctrl.arecaSysInfoUp.Set(1)
 		}
 	}()
@@ -109,7 +108,7 @@ func (ctrl controller) getRaidSetInfo() []map[string]string {
 
 	defer func() {
 		if panicInfo := recover(); panicInfo != nil {
-			level.Error(logger).Log("err", panicInfo, "msg", debug.Stack())
+			logger.Error("panic recovered", "err", panicInfo, "stack", string(debug.Stack()))
 			ctrl.arecaRsfInfoUp.Set(1)
 		}
 	}()
@@ -179,7 +178,7 @@ func (ctrl controller) getDiskInfo() []map[string]string {
 
 	defer func() {
 		if panicInfo := recover(); panicInfo != nil {
-			level.Error(logger).Log("err", panicInfo, "msg", debug.Stack())
+			logger.Error("panic recovered", "err", panicInfo, "stack", string(debug.Stack()))
 			ctrl.arecaDiskInfoUp.Set(1)
 		}
 	}()
@@ -249,7 +248,7 @@ func (ctrl controller) getDetailedDiskInfo(disk map[string]string) map[string]st
 
 	defer func() {
 		if panicInfo := recover(); panicInfo != nil {
-			level.Error(logger).Log("err", panicInfo, "msg", debug.Stack())
+			logger.Error("panic recovered", "err", panicInfo, "stack", string(debug.Stack()))
 			ctrl.arecaDiskInfoUp.Set(1)
 		}
 	}()
@@ -423,7 +422,7 @@ func (ctrl controller) recordMetrics() {
 }
 
 var (
-	logger          = promlog.New(&promlog.Config{})
+	logger          = promslog.New(&promslog.Config{})
 	collectInterval = kingpin.Flag("collect-interval", "How often to poll each controller").Default("5s").Duration()
 	cliPath         = kingpin.Flag("cli-path", "Path to the Areca CLI binary").Default("areca.cli64").String()
 	controllers     = kingpin.Flag("controllers", "How many controllers to scrape").Default("1").Int()
@@ -482,8 +481,8 @@ func main() {
 		}.recordMetrics()
 	}
 
-	level.Info(logger).Log("msg", "Starting areca_exporter", "version", version.Info())
-	level.Info(logger).Log("msg", "Build context", "build_context", version.BuildContext())
+	logger.Info("Starting areca_exporter", "version", version.Info())
+	logger.Info("Build context", "build_context", version.BuildContext())
 
 	http.Handle("/metrics", promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -498,7 +497,7 @@ func main() {
 
 	srv := &http.Server{}
 	if err := web.ListenAndServe(srv, toolkitFlags, logger); err != nil {
-		level.Error(logger).Log("err", err)
+		logger.Error("web server failed", "err", err)
 		os.Exit(1)
 	}
 }
